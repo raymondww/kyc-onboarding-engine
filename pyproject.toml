@@ -1,0 +1,17 @@
+[project]
+name = "adaptive-kyc-engine"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "face-recognition>=1.3.0",
+    "fastapi>=0.139.0",
+    "langchain-ollama>=1.1.0",
+    "langgraph>=1.2.8",
+    "numpy>=2.5.1",
+    "pandas>=3.0.3",
+    "pytesseract>=0.3.13",
+    "rapidfuzz>=3.14.5",
+    "scikit-learn>=1.9.0",
+    "uvicorn>=0.50.2",
+]
