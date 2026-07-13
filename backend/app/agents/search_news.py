@@ -22,16 +22,6 @@ def search_adverse_media(applicant_name, max_results=5):
 
     return results
 
-def filter_irrelevant_domains(results):
-    """
-    Strip out sources that are almost never useful adverse-media signal:
-    encyclopedias, dictionaries, generic reference sites.
-    """
-    print(f"Filtering {len(results)} results for irrelevant domains...")
-    blocked_domains = ["wikipedia.org", "dictionary.com", "merriam-webster.com", "wiktionary.org"]
-    filtered = [r for r in results if not any(domain in r.get("href", "") for domain in blocked_domains)]
-    return filtered
-
 # LangGraph pipeline 
 class AgentState(TypedDict):
     applicant_name: str
