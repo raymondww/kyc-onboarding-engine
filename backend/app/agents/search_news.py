@@ -31,7 +31,7 @@ def filter_irrelevant_domains(results):
     filtered = [r for r in results if not any(domain in r.get("href", "") for domain in blocked_domains)]
     return filtered
 
-# --- LangGraph pipeline ---
+# LangGraph pipeline 
 class AgentState(TypedDict):
     applicant_name: str
     raw_results: list
@@ -50,13 +50,35 @@ def filter_node(state: AgentState) -> AgentState:
     state["filtered_results"] = filter_irrelevant_domains(state["raw_results"])
     return state
 
+# Build graph
+graph = StateGraph(AgentState)
+graph.add_node("search", search_node)
+graph.add_node("filter", filter_node)
+graph.set_entry_point("search")
+graph.add_edge("search", "filter")
+graph.add_edge("filter", END)
+app = graph.compile()
+
+def run_osint_agent(applicant_name):
+    """Convenience wrapper to run the full pipeline for one applicant."""
+    result = app.invoke({
+        "applicant_name": applicant_name,
+        "raw_results": [],
+        "filtered_results": [],
+        "risk_summary": "",
+        "risk_flag": ""
+    })
+    return result
+
 if __name__ == "__main__":
     # Quick manual test
     test_name = "Jane Doe"
-    results = search_adverse_media(test_name)
+    # results = search_adverse_media(test_name)
+    
+    result = run_osint_agent(test_name)
 
-    print(f"Found {len(results)} results for '{test_name}'")
-    for r in results:
-        print(f"- {r['title']}")
-        print(f"  {r['body'][:150]}...")
-        print(r)
+    print(f"\nApplicant: {test_name}")
+    print(f"Raw results found: {len(result['raw_results'])}")
+    print(f"After filtering: {len(result['filtered_results'])}")
+    print(f"\nRisk summary:\n{result['risk_summary']}")
+    print(f"\nRisk flag: {result['risk_flag']}")
