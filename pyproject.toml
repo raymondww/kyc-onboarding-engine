@@ -1,5 +1,5 @@
 [project]
-name = "adaptive-kyc-engine"
+name = "kyc-onboarding-engine"
 version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.12"
