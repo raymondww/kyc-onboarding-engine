@@ -10,6 +10,10 @@ output_path.parent.mkdir(parents=True, exist_ok=True)  # creates folder if missi
 
 fake = Faker()
 
+SEED = 42
+Faker.seed(SEED)
+random.seed(SEED)
+
 COUNTRIES = ["Country A", "Country B"]
 
 def load_sdn_names():
