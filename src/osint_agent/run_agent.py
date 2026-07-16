@@ -8,6 +8,7 @@ def run_osint_agent(applicant_name, applicant_dob=None):
         "ofac_result": {},
         "raw_results": [],
         "filtered_results": [],
+        "court_result": {},
         "risk_summary": "",
         "risk_flag": ""
     })
@@ -15,8 +16,9 @@ def run_osint_agent(applicant_name, applicant_dob=None):
 
 
 if __name__ == "__main__":
-    result = run_osint_agent("Viktor Kessler", applicant_dob="1975-06-12")
+    result = run_osint_agent("Sam Bankman-Fried", applicant_dob="1975-06-12")
 
     print(f"OFAC result: {result['ofac_result']}")
+    print(f"Court result: {result['court_result']}")
     print(f"\nRisk summary:\n{result['risk_summary']}")
     print(f"\nRisk flag: {result['risk_flag']}")

@@ -4,6 +4,7 @@ from langgraph.graph import StateGraph, END
 from ofac_check import check_ofac_match, load_sdn_list
 from search_news import search_adverse_media
 from filters import filter_irrelevant_domains
+from court_records_check import check_court_records
 from summarize import summarize_risk
 
 
@@ -13,6 +14,7 @@ class AgentState(TypedDict):
     ofac_result: dict
     raw_results: list
     filtered_results: list
+    court_result: dict
     risk_summary: str
     risk_flag: str
 
@@ -52,6 +54,9 @@ def filter_node(state: AgentState) -> AgentState:
     state["filtered_results"] = filter_irrelevant_domains(state["raw_results"])
     return state
 
+def court_records_node(state: AgentState) -> AgentState:
+    state["court_result"] = check_court_records(state["applicant_name"], max_results=1)
+    return state
 
 def summarize_node(state: AgentState) -> AgentState:
     result = summarize_risk(state["applicant_name"], state["filtered_results"])
@@ -66,6 +71,7 @@ graph.add_node("ofac_check", ofac_check_node)
 graph.add_node("finalize_high_confidence", finalize_high_confidence_node)
 graph.add_node("search", search_node)
 graph.add_node("filter", filter_node)
+graph.add_node("court_records", court_records_node)
 graph.add_node("summarize", summarize_node)
 
 graph.set_entry_point("ofac_check")
@@ -76,7 +82,8 @@ graph.add_conditional_edges(
 )
 graph.add_edge("finalize_high_confidence", END)
 graph.add_edge("search", "filter")
-graph.add_edge("filter", "summarize")
+graph.add_edge("filter", "court_records")   # run court check after news filter
+graph.add_edge("court_records", "summarize")
 graph.add_edge("summarize", END)
 
 app = graph.compile()
