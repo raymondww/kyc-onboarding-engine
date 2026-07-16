@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()  # Load environment variables from .env file
 
 COURTLISTENER_API_URL = "https://www.courtlistener.com/api/rest/v4/search/"
+COURTLISTENER_OPINION_URL = "https://www.courtlistener.com/api/rest/v4/opinions/{}/"
 COURTLISTENER_TOKEN = os.environ.get("COURTLISTENER_API_TOKEN")  
 FINANCIAL_RISK_KEYWORDS = [
     "fraud", "money laundering", "embezzlement", "securities",
@@ -40,39 +41,60 @@ def search_court_records(applicant_name, max_results=5):
 
     results = []
     for item in data.get("results", [])[:max_results]:
+        opinions = item.get("opinions", [])
+        opinion_id = opinions[0].get("id") if opinions else None
+
         results.append({
             "case_name": item.get("caseName", ""),
             "date_filed": item.get("dateFiled", ""),
+            "court": item.get("court", ""),
             "url": f"https://www.courtlistener.com{item.get('absolute_url', '')}",
-            "snippet": item["opinions"][0].get("snippet", "")
+            "opinion_id": opinion_id,
         })
     return results
 
+def fetch_opinion_text(opinion_id, rate_limit_delay=1.0):
+    """
+    Fetch the full plain text of an opinion by its ID.
+    This is a separate API call from search, needed since search only returns a short snippet.
+    """
+    if not opinion_id or not COURTLISTENER_TOKEN:
+        return ""
+
+    time.sleep(rate_limit_delay)  # stay under free-tier rate limit
+
+    headers = {"Authorization": f"Token {COURTLISTENER_TOKEN}"}
+    url = COURTLISTENER_OPINION_URL.format(opinion_id)
+
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to fetch opinion {opinion_id}: {e}")
+        return ""
+
+    return data.get("plain_text", "")
+    
 def filter_relevant_court_records(applicant_name, results, name_match_threshold=85):
     """
-    Check whether the applicant's name is actually mentioned in the case,
-    using the opinion snippet as the primary evidence (not just case_name,
-    since the named parties in a case title are often companies, not individuals,
-    even when the individual is discussed at length in the opinion itself).
+    Fetch full opinion text for each result, then fuzzy-check whether the applicant's
+    name is actually mentioned in the opinion body (not just the case caption,
+    since named parties are often companies while the individual appears only in the text).
     """
     relevant = []
     for r in results:
-        case_name = r.get("case_name", "")
-        snippet = r.get("snippet", "")
-        print(f"Snippet: {snippet}")
-        print(r.get("url", ""))
+        opinion_text = fetch_opinion_text(r.get("opinion_id"))
+        r["opinion_text"] = opinion_text  # keep for keyword check + audit trail
 
-        # Check if the applicant's name appears in the snippet text directly
-        # partial_ratio handles cases where snippet has extra text around the name
-        snippet_score = fuzz.partial_ratio(applicant_name.lower(), snippet.lower())
-        case_name_score = fuzz.partial_ratio(applicant_name.lower(), case_name.lower())
+        if not opinion_text:
+            continue
 
-        # Use whichever is higher, but snippet is the more reliable signal
-        best_score = max(snippet_score, case_name_score)
+        # partial_ratio finds the name as a substring within the long opinion text
+        name_score = fuzz.partial_ratio(applicant_name.lower(), opinion_text.lower())
 
-        if best_score >= name_match_threshold:
-            r["name_match_score"] = best_score
-            r["matched_in"] = "snippet" if snippet_score >= case_name_score else "case_name"
+        if name_score >= name_match_threshold:
+            r["name_match_score"] = name_score
             relevant.append(r)
 
     return relevant
