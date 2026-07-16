@@ -101,16 +101,52 @@ def filter_relevant_court_records(applicant_name, results, name_match_threshold=
 
 def is_financially_relevant(record):
     """Check if a court record's case name or snippet suggests financial/compliance risk."""
-    text = (record.get("case_name", "") + " " + record.get("snippet", "")).lower()
+    text = (record.get("case_name", "") + " " + record.get("opinion_text", "")).lower()
     matched_keywords = [kw for kw in FINANCIAL_RISK_KEYWORDS if kw in text]
     return len(matched_keywords) > 0, matched_keywords
- 
+
+def check_court_records(applicant_name, max_results=1, rate_limit_delay=1.0):
+    """
+    Full check: search CourtListener, fetch full opinion text for each hit,
+    filter to name-relevant results, then split by financial/compliance risk.
+    """
+    time.sleep(rate_limit_delay)
+
+    raw_results = search_court_records(applicant_name, max_results=max_results)
+    name_matched_results = filter_relevant_court_records(applicant_name, raw_results)
+
+    high_risk_records = []
+    low_risk_records = []
+
+    for r in name_matched_results:
+        is_risky, keywords = is_financially_relevant(r)
+        r["matched_keywords"] = keywords
+        # Drop the full opinion_text from final output to keep it lean; keep only what's needed
+        r.pop("opinion_text", None)
+        if is_risky:
+            high_risk_records.append(r)
+        else:
+            low_risk_records.append(r)
+
+    return {
+        "court_hit": len(high_risk_records) > 0,
+        "raw_count": len(raw_results),
+        "name_matched_count": len(name_matched_results),
+        "high_risk_count": len(high_risk_records),
+        "high_risk_records": high_risk_records,
+        "low_risk_records": low_risk_records,
+    }
+    
 if __name__ == "__main__":
     # Quick manual test
     test_name = "Sam Bankman-Fried"
-    results = search_court_records(test_name)
-    result = filter_relevant_court_records(test_name,results)
- 
+    result = check_court_records(test_name)
+
     print(f"Applicant: {test_name}")
-    print(result)
+    print(f"Raw: {result['raw_count']}, Name-matched: {result['name_matched_count']}, High-risk: {result['high_risk_count']}")
+    print("\nHigh-risk records:")
+    for r in result["high_risk_records"]:
+        print(f"- {r['case_name']} ({r['date_filed']}) - {r['url']} - Keywords: {', '.join(r['matched_keywords'])}")
+    for r in result["low_risk_records"]:
+        print(f"- {r['case_name']} ({r['date_filed']}) - {r['url']} - Keywords: {', '.join(r['matched_keywords'])}")
 
