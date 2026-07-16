@@ -1,9 +1,11 @@
 [project]
-name = "adaptive-kyc-engine"
+name = "kyc-onboarding-engine"
 version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.12"
 dependencies = [
+    "ddgs>=9.14.4",
+    "duckduckgo-search>=8.1.1",
     "face-recognition>=1.3.0",
     "faker>=40.28.1",
     "fastapi>=0.139.0",
@@ -12,6 +14,7 @@ dependencies = [
     "numpy>=2.5.1",
     "pandas>=3.0.3",
     "pytesseract>=0.3.13",
+    "python-dotenv>=1.2.2",
     "rapidfuzz>=3.14.5",
     "scikit-learn>=1.9.0",
     "uvicorn>=0.50.2",
