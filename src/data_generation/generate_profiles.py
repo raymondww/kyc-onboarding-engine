@@ -31,6 +31,7 @@ def generate_profile(planted_sanctioned_name=None, date_of_birth=None):
         "id_number": fake.bothify(text="ID#########"),
         "country": random.choice(COUNTRIES),
         "email": fake.email(),
+        "is_sanctioned": planted_sanctioned_name is not None,
     }
 
 def extract_dob_from_sdn_entry(name, sdn_names):
@@ -52,7 +53,7 @@ def extract_dob_from_sdn_entry(name, sdn_names):
     except Exception as e:
         print(f"Error parsing DOB for {name}: {e}. Using random DOB.")
         return fake.date_of_birth(minimum_age=18, maximum_age=80)
-    
+
 def generate_sanctioned_profiles(num_profiles=10, seed=42):
     sdn_names = load_sdn_names()
     planted_names = sdn_names["name"].sample(n=num_profiles, random_state=seed).tolist()
