@@ -1,4 +1,3 @@
-
 import json
 import random
 from pathlib import Path
@@ -10,9 +9,6 @@ SEED = 42
 random.seed(SEED)
 fake = Faker()
 Faker.seed(SEED)
-
-# --- demo size knob ---------------------------------------------------------
-NUM_IDENTITIES = 5
 
 ROOT = Path(__file__).resolve().parent.parent
 PROFILES_PATH = ROOT / "data" / "synthetic" / "synthetic_profiles.json"
@@ -27,15 +23,42 @@ PHOTO_BOX = (40, 120, 300, 460)  # left, top, right, bottom
 
 def _font(size: int) -> ImageFont.FreeTypeFont:
     try:
-        return ImageFont.truetype("arial.ttf", size)
+        return ImageFont.truetype("DejaVuSans-Bold.ttf", size)
     except OSError:
         return ImageFont.load_default()
 
 
 def pick_demo_profiles() -> list[dict]:
+    """Deliberately curated selection, not a random sample -- picks one
+    profile from each (country, is_sanctioned) combination so the demo set
+    shows variety on both axes, plus one fully random profile as a wildcard.
+    Uses id_number to track "already picked" since profile dicts aren't
+    hashable and full_name alone isn't guaranteed unique."""
     profiles = json.loads(PROFILES_PATH.read_text())
     rng = random.Random(SEED)
-    return rng.sample(profiles, min(NUM_IDENTITIES, len(profiles)))
+
+    chosen = []
+    chosen_ids = set()
+
+    def pick_from(pool, label):
+        available = [p for p in pool if p["id_number"] not in chosen_ids]
+        if not available:
+            print(f"WARNING: no profile available for {label} -- skipping.")
+            return
+        pick = rng.choice(available)
+        chosen.append(pick)
+        chosen_ids.add(pick["id_number"])
+
+    for country in ("Country A", "Country B"):
+        for is_sanctioned in (True, False):
+            pool = [p for p in profiles if p["country"] == country and p["is_sanctioned"] == is_sanctioned]
+            label = f"{'sanctioned' if is_sanctioned else 'normal'} + {country}"
+            pick_from(pool, label)
+
+    # One wildcard, from whatever's left, for variety beyond the 4 fixed slots.
+    pick_from(profiles, "random wildcard")
+
+    return chosen
 
 
 def make_id_card(identity: dict, face_path: Path, out_path: Path) -> None:
@@ -104,6 +127,7 @@ def main():
             "dob": profile["dob"],
             "id_number": profile["id_number"],
             "country": profile["country"],
+            "is_sanctioned": profile["is_sanctioned"],  # carried through for demo visibility only -- the eKYC pipeline itself still ignores this
             "expiry": fake.date_between(start_date="+1y", end_date="+8y").strftime("%Y-%m-%d"),
             "source_face": str(face_path.relative_to(ROOT)),
         })
@@ -141,6 +165,9 @@ def main():
 
     MANIFEST_OUT.write_text(json.dumps(manifest, indent=2))
     print(f"Generated {len(identities)} identities -> {len(manifest)} test pairs.")
+    for identity in identities:
+        tag = "SANCTIONED" if identity["is_sanctioned"] else "normal"
+        print(f"  {identity['identity_id']}: {identity['full_name']} ({identity['country']}, {tag})")
     print(f"Manifest: {MANIFEST_OUT.relative_to(ROOT)}")
 
 
