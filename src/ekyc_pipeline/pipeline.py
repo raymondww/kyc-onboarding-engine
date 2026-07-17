@@ -167,7 +167,7 @@ def run_pipeline(id_image_path: str, selfie_image_path: str) -> dict:
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("Usage: python ekyc_pipeline.py <id_image_path> <selfie_image_path>")
+        print("Usage: python src/ekyc_pipeline/pipeline.py <id_image_path> <selfie_image_path>")
         sys.exit(1)
 
     result = run_pipeline(sys.argv[1], sys.argv[2])

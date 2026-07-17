@@ -6,11 +6,10 @@ from rapidfuzz import fuzz
 
 ROOT = Path(__file__).resolve().parents[2]  # router.py -> onboarding_engine -> src -> repo root
 
-sys.path.insert(0, str(ROOT))                            # for `src.regulatory_engine...`
-sys.path.insert(0, str(ROOT / "scripts"))                 # for `ekyc_pipeline`
+sys.path.insert(0, str(ROOT))                            # for `src.regulatory_engine...`, `src.ekyc_pipeline...`
 sys.path.insert(0, str(ROOT / "src" / "osint_agent"))     # for run_agent's own flat imports
 
-from ekyc_pipeline import LIVENESS_REVIEW_THRESHOLD, extract_and_validate_id, face_match_and_liveness  # noqa: E402
+from src.ekyc_pipeline.pipeline import LIVENESS_REVIEW_THRESHOLD, extract_and_validate_id, face_match_and_liveness  # noqa: E402
 from src.regulatory_engine.cdd_validator import get_cdd_config    # noqa: E402
 import run_agent  # noqa: E402
 
