@@ -74,6 +74,15 @@
     color: var(--success);
     display: none;
   }
+  .review {
+    margin-top: 20px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    font-size: 14px;
+    border: 1px solid #fbbf24;
+    color: #fbbf24;
+    display: none;
+  }
   .blocked {
     margin-top: 20px;
     padding: 14px 16px;
@@ -99,6 +108,63 @@
     display: none;
   }
   input.invalid { border-color: var(--danger); }
+
+  #webcamVideo, #capturePreview {
+    width: 100%;
+    border-radius: 8px;
+    background: #000;
+    display: block;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+  }
+  .face-status {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+  .face-status.ready { color: var(--success); }
+  .face-status.warn { color: var(--danger); }
+  .capture-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .capture-actions button {
+    margin-top: 0;
+    width: auto;
+    flex: 1;
+  }
+  .link-btn {
+    margin-top: 10px;
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 0;
+    width: auto;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  .link-btn:hover { opacity: 0.85; }
+
+  #pipelineStatus {
+    margin-top: 20px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    display: none;
+  }
+  #pipelineStatus .step-line {
+    font-size: 13px;
+    color: var(--muted);
+    padding: 3px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #pipelineStatus .step-line.done { color: var(--text); }
+  #pipelineStatus .step-line .icon { width: 14px; text-align: center; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -128,8 +194,40 @@
     <button type="submit" id="submitBtn">Continue</button>
   </form>
 
+  <form id="uploadForm" style="display: none;">
+    <p class="subtitle" style="margin: 0 0 18px;">Upload a photo of your government-issued ID<span id="selfieHint"> and a selfie</span> to verify your identity.</p>
+
+    <label for="idImage">Government ID photo</label>
+    <input type="file" id="idImage" accept="image/*" required>
+
+    <div id="selfieGroup">
+      <label>Selfie photo</label>
+
+      <div id="webcamCapture">
+        <video id="webcamVideo" autoplay playsinline muted></video>
+        <canvas id="captureCanvas" style="display: none;"></canvas>
+        <img id="capturePreview" style="display: none;" alt="Captured selfie preview">
+        <div class="face-status" id="faceStatus">Starting camera...</div>
+        <div class="capture-actions">
+          <button type="button" id="captureBtn" disabled>Capture photo</button>
+          <button type="button" id="retakeBtn" style="display: none;">Retake</button>
+        </div>
+      </div>
+
+      <input type="file" id="selfieImage" accept="image/*" style="display: none;">
+      <button type="button" class="link-btn" id="useUploadInsteadBtn">Upload a photo instead</button>
+    </div>
+
+    <button type="submit" id="uploadBtn">Verify identity</button>
+  </form>
+
+  <div id="pipelineStatus"></div>
+
   <div class="confirmation" id="confirmation">
-    Verified. Proceeding to document upload.
+    Verified. Your onboarding is complete.
+  </div>
+  <div class="review" id="review">
+    Your application has been submitted for manual review. We'll follow up shortly.
   </div>
   <div class="blocked" id="blocked">
     We were unable to verify this session. Please try again or contact support.
@@ -137,6 +235,12 @@
   <div class="error" id="errorBox"></div>
 </div>
 
+<!-- Client-side face detection for the webcam capture step below -- runs
+     entirely in the browser (WebGL), no server round-trip. Only gates
+     WHEN the user is allowed to capture (a face must be in frame); the
+     real face-match against the ID still happens server-side via
+     DeepFace, in ekyc_pipeline.py. -->
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 <script>
   // Every field-fill signal below (typing rhythm, mouse movement, timing)
   // is captured silently and sent to the server on submit -- nothing about
@@ -146,6 +250,7 @@
   // (see backend/app/api/session_routes.py's /submit endpoint and
   // data/session_logs.jsonl) for the team to review, not exposed here.
   const API_URL = '/session/submit';
+  const KYC_API_URL = '/kyc/verify';
 
   const form = document.getElementById('onboardingForm');
   const fullNameInput = document.getElementById('fullName');
@@ -155,8 +260,70 @@
   const dobError = document.getElementById('dobError');
   const submitBtn = document.getElementById('submitBtn');
   const confirmation = document.getElementById('confirmation');
+  const review = document.getElementById('review');
   const blocked = document.getElementById('blocked');
   const errorBox = document.getElementById('errorBox');
+
+  const uploadForm = document.getElementById('uploadForm');
+  const idImageInput = document.getElementById('idImage');
+  const selfieImageInput = document.getElementById('selfieImage');
+  const selfieGroup = document.getElementById('selfieGroup');
+  const selfieHint = document.getElementById('selfieHint');
+  const uploadBtn = document.getElementById('uploadBtn');
+
+  // --- Live pipeline progress panel ---
+  // Mirrors, line for line, what prints in the server's terminal (see
+  // src/onboarding_engine/router.py's _step() and session_routes.py's
+  // print() calls) -- one continuous timeline across both the fraud check
+  // and the document/OSINT verification, not two separate progress UIs.
+  const pipelineStatus = document.getElementById('pipelineStatus');
+  const pipelineStepEls = {}; // step id (without "_done" suffix) -> DOM line
+
+  function resetPipelineStatus() {
+    pipelineStatus.innerHTML = '';
+    pipelineStatus.style.display = 'block';
+    for (const key in pipelineStepEls) delete pipelineStepEls[key];
+  }
+
+  function addPipelineStep(stepId, message) {
+    const isDoneEvent = stepId.endsWith('_done');
+    const baseId = isDoneEvent ? stepId.slice(0, -5) : stepId;
+
+    if (isDoneEvent && pipelineStepEls[baseId]) {
+      const el = pipelineStepEls[baseId];
+      el.querySelector('.icon').textContent = '✓';
+      el.querySelector('.text').textContent = message;
+      el.classList.add('done');
+      return;
+    }
+
+    const line = document.createElement('div');
+    line.className = 'step-line';
+    // "finalize" has no separate "_done" event -- its one message IS the
+    // completion state, so mark it done immediately rather than leaving a
+    // spinner icon on the last line forever.
+    const isFinal = stepId === 'finalize';
+    const icon = document.createElement('span');
+    icon.className = 'icon';
+    icon.textContent = isFinal ? '✓' : '…';
+    const text = document.createElement('span');
+    text.className = 'text';
+    text.textContent = message;
+    line.appendChild(icon);
+    line.appendChild(text);
+    if (isFinal) line.classList.add('done');
+    pipelineStatus.appendChild(line);
+    pipelineStepEls[baseId] = line;
+  }
+
+  const webcamCapture = document.getElementById('webcamCapture');
+  const webcamVideo = document.getElementById('webcamVideo');
+  const captureCanvas = document.getElementById('captureCanvas');
+  const capturePreview = document.getElementById('capturePreview');
+  const faceStatus = document.getElementById('faceStatus');
+  const captureBtn = document.getElementById('captureBtn');
+  const retakeBtn = document.getElementById('retakeBtn');
+  const useUploadInsteadBtn = document.getElementById('useUploadInsteadBtn');
 
   // Blocks today/future dates in the native picker itself. Belt-and-
   // suspenders with the explicit check in validateDob() below, since `max`
@@ -247,6 +414,117 @@
     return { mean, std: Math.sqrt(variance) };
   }
 
+  // --- Webcam selfie capture with client-side face detection ---
+  // face-api.js's TinyFaceDetector runs entirely in the browser (WebGL),
+  // so this never sends the live feed anywhere -- it just decides when the
+  // "Capture" button is allowed to fire. The actual identity check (does
+  // this face match the ID photo) still happens server-side via DeepFace,
+  // same as the file-upload path always did.
+  const FACE_API_MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js/weights';
+
+  let webcamStream = null;
+  let faceDetectionInterval = null;
+  let selfieBlob = null;          // set once a frame with a detected face is captured
+  let modelsLoaded = false;
+  let usingFileUploadFallback = false;
+
+  async function ensureModelsLoaded() {
+    if (modelsLoaded) return;
+    await faceapi.nets.tinyFaceDetector.loadFromUri(FACE_API_MODEL_URL);
+    modelsLoaded = true;
+  }
+
+  function stopWebcamStream() {
+    if (faceDetectionInterval) {
+      clearInterval(faceDetectionInterval);
+      faceDetectionInterval = null;
+    }
+    if (webcamStream) {
+      webcamStream.getTracks().forEach((t) => t.stop());
+      webcamStream = null;
+    }
+  }
+
+  function switchToFileUpload() {
+    usingFileUploadFallback = true;
+    stopWebcamStream();
+    webcamCapture.style.display = 'none';
+    selfieImageInput.style.display = 'block';
+    useUploadInsteadBtn.textContent = 'Use webcam instead';
+  }
+
+  async function startWebcamFlow() {
+    usingFileUploadFallback = false;
+    selfieBlob = null;
+    selfieImageInput.style.display = 'none';
+    webcamCapture.style.display = 'block';
+    capturePreview.style.display = 'none';
+    webcamVideo.style.display = 'block';
+    retakeBtn.style.display = 'none';
+    captureBtn.style.display = 'inline-block';
+    captureBtn.disabled = true;
+    useUploadInsteadBtn.textContent = 'Upload a photo instead';
+    faceStatus.textContent = 'Starting camera...';
+    faceStatus.className = 'face-status';
+
+    try {
+      await ensureModelsLoaded();
+      webcamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      webcamVideo.srcObject = webcamStream;
+      faceStatus.textContent = 'Looking for your face...';
+
+      faceDetectionInterval = setInterval(async () => {
+        if (!webcamVideo.videoWidth) return;
+        const detection = await faceapi.detectSingleFace(webcamVideo, new faceapi.TinyFaceDetectorOptions());
+        if (detection) {
+          captureBtn.disabled = false;
+          faceStatus.textContent = 'Face detected -- ready to capture.';
+          faceStatus.className = 'face-status ready';
+        } else {
+          captureBtn.disabled = true;
+          faceStatus.textContent = 'No face detected -- center your face in frame.';
+          faceStatus.className = 'face-status warn';
+        }
+      }, 400);
+    } catch (err) {
+      // Camera denied/unavailable, or the face-detection models failed to
+      // load (e.g. offline) -- fall back to file upload rather than
+      // blocking a Country A applicant entirely.
+      faceStatus.textContent = `Camera unavailable (${err.message}). Use the upload option below instead.`;
+      faceStatus.className = 'face-status warn';
+      switchToFileUpload();
+    }
+  }
+
+  captureBtn.addEventListener('click', () => {
+    captureCanvas.width = webcamVideo.videoWidth;
+    captureCanvas.height = webcamVideo.videoHeight;
+    captureCanvas.getContext('2d').drawImage(webcamVideo, 0, 0);
+    captureCanvas.toBlob((blob) => {
+      selfieBlob = blob;
+      capturePreview.src = URL.createObjectURL(blob);
+      capturePreview.style.display = 'block';
+      webcamVideo.style.display = 'none';
+      captureBtn.style.display = 'none';
+      retakeBtn.style.display = 'inline-block';
+      faceStatus.textContent = 'Photo captured.';
+      faceStatus.className = 'face-status ready';
+      stopWebcamStream();
+    }, 'image/jpeg', 0.9);
+  });
+
+  retakeBtn.addEventListener('click', () => {
+    startWebcamFlow();
+  });
+
+  useUploadInsteadBtn.addEventListener('click', () => {
+    if (usingFileUploadFallback) {
+      startWebcamFlow();
+    } else {
+      switchToFileUpload();
+    }
+  });
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     errorBox.style.display = 'none';
@@ -259,13 +537,10 @@
     submitBtn.disabled = true;
     submitBtn.textContent = 'Submitting...';
 
-    let { mean, std } = computeTypingStats();
-    // Pure paste, no real typing at all -- honest translation of "value
-    // appeared instantly" into the feature space (see session_routes.py).
-    if (pasteDetected && nameKeyTimestamps.length === 0 && addressKeyTimestamps.length === 0) {
-      mean = 0;
-      std = 0;
-    }
+    resetPipelineStatus();
+    addPipelineStep('fraud_check', 'Checking submission for bot behavior...');
+
+    const { mean, std } = computeTypingStats();
     const durationSec = sessionStart !== null ? (performance.now() - sessionStart) / 1000 : 0;
 
     const payload = {
@@ -277,6 +552,11 @@
       typing_cadence_std_ms: std,
       session_duration_sec: durationSec,
       mouse_move_count: mouseMoveCount,
+      // The actual bot signal the backend gates on now -- see
+      // src/fraud_scorer/scorer.py. Sent explicitly rather than inferred
+      // from cadence being zero, since "no keystrokes recorded" and
+      // "field was pasted into" are different things worth keeping distinct.
+      paste_detected: pasteDetected,
     };
 
     try {
@@ -291,18 +571,132 @@
         throw new Error(`Server responded ${res.status}`);
       }
       const result = await res.json(); // {"status": "passed" | "flagged"}
+      addPipelineStep('fraud_check_done', result.status === 'flagged' ? 'Submission flagged as bot-like.' : 'Submission check passed.');
+
+      if (result.status === 'flagged') {
+        form.style.display = 'none';
+        blocked.style.display = 'block';
+        return;
+      }
+
+      // Fraud check passed -- move to document upload. Country A (eKYC)
+      // needs a selfie for face-match + liveness; Country B's ID-only
+      // check doesn't collect one at all (see src/onboarding_engine/
+      // router.py's docstring for why).
+      const needsSelfie = countryInput.value === 'Country A';
+      selfieGroup.style.display = needsSelfie ? 'block' : 'none';
+      selfieHint.style.display = needsSelfie ? 'inline' : 'none';
+      if (needsSelfie) {
+        startWebcamFlow();
+      } else {
+        stopWebcamStream();
+      }
 
       form.style.display = 'none';
-      if (result.status === 'flagged') {
-        blocked.style.display = 'block';
-      } else {
-        confirmation.style.display = 'block';
-      }
+      uploadForm.style.display = 'block';
     } catch (err) {
       errorBox.textContent = `Could not submit: ${err.message}`;
       errorBox.style.display = 'block';
       submitBtn.disabled = false;
       submitBtn.textContent = 'Continue';
+    }
+  });
+
+  uploadForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorBox.style.display = 'none';
+
+    // Selfie comes from either the webcam capture (selfieBlob) or the
+    // file-upload fallback -- whichever the user actually used.
+    if (countryInput.value === 'Country A' && !selfieBlob && !selfieImageInput.files[0]) {
+      errorBox.textContent = 'Please capture or upload a selfie photo before continuing.';
+      errorBox.style.display = 'block';
+      return;
+    }
+
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = 'Verifying...';
+    stopWebcamStream(); // release the camera once we're submitting, regardless of path used
+
+    const formData = new FormData();
+    formData.append('full_name', fullNameInput.value);
+    formData.append('dob', dobInput.value);
+    formData.append('country', countryInput.value);
+    formData.append('id_image', idImageInput.files[0]);
+    if (countryInput.value === 'Country A') {
+      const selfieFile = selfieBlob || selfieImageInput.files[0];
+      formData.append('selfie_image', selfieFile, 'selfie.jpg');
+    }
+
+    try {
+      const res = await fetch(KYC_API_URL, { method: 'POST', body: formData });
+      if (!res.ok) {
+        // Only the pre-stream validation (e.g. bad country) responds with
+        // a plain JSON error body instead of opening the NDJSON stream.
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.detail || `Server responded ${res.status}`);
+      }
+
+      // NDJSON stream: one JSON object per line -- either a live "step"
+      // progress update (see src/onboarding_engine/router.py's _step(),
+      // which prints the identical message server-side) or the final
+      // "result" line. Read incrementally so the checklist below updates
+      // in real time as each stage actually runs, not all at once at the end.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalResult = null;
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let newlineIndex;
+        while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, newlineIndex).trim();
+          buffer = buffer.slice(newlineIndex + 1);
+          if (!line) continue;
+          const event = JSON.parse(line);
+          if (event.event === 'step') {
+            addPipelineStep(event.step, event.message);
+          } else if (event.event === 'result') {
+            finalResult = event;
+          }
+        }
+      }
+
+      if (!finalResult) {
+        throw new Error('Verification stream ended unexpectedly.');
+      }
+
+      // {"status": "approved" | "review" | "rejected" | "not_implemented", "reason"?: string}
+      const result = finalResult;
+
+      uploadForm.style.display = 'none';
+      if (result.status === 'approved') {
+        confirmation.style.display = 'block';
+      } else if (result.status === 'review') {
+        review.style.display = 'block';
+      } else if (result.status === 'rejected') {
+        if (result.reason) {
+          // The one client-fixable case (e.g. missing selfie) -- let them retry.
+          errorBox.textContent = result.reason;
+          errorBox.style.display = 'block';
+          uploadForm.style.display = 'block';
+        } else {
+          blocked.style.display = 'block';
+        }
+      } else {
+        errorBox.textContent = 'This verification method is not yet available for your country.';
+        errorBox.style.display = 'block';
+      }
+    } catch (err) {
+      errorBox.textContent = `Could not submit: ${err.message}`;
+      errorBox.style.display = 'block';
+    } finally {
+      uploadBtn.disabled = false;
+      uploadBtn.textContent = 'Verify identity';
     }
   });
 </script>

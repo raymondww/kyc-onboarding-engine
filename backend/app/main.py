@@ -21,10 +21,10 @@ app.add_middleware(
 app.include_router(session_router)
 
 try:
-    from app.api.routes import router as kyc_router
+    from app.api.kyc_routes import router as kyc_router
     app.include_router(kyc_router)
 except ImportError as e:
-    print(f"Warning: eKYC routes not mounted ({e}). Fraud-scoring endpoint is still available.")
+    print(f"Warning: eKYC/document-verification routes not mounted ({e}). Fraud-scoring endpoint is still available.")
 
 
 @app.get("/")

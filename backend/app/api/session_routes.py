@@ -10,14 +10,9 @@ from pydantic import BaseModel, field_validator
 ROOT = Path(__file__).resolve().parents[3]  # api -> app -> backend -> repo root
 sys.path.insert(0, str(ROOT))
 
-from src.fraud_scorer.scorer import RISK_THRESHOLD, score_session, train_fraud_model  # noqa: E402
+from src.fraud_scorer.scorer import score_session  # noqa: E402
 
 router = APIRouter(prefix="/session", tags=["fraud"])
-
-SESSIONS_PATH = ROOT / "data" / "synthetic" / "sessions.json"
-_sessions = json.loads(SESSIONS_PATH.read_text())
-_human_sessions = [s for s in _sessions if not s["is_bot"]]
-_model, _score_min, _score_max = train_fraud_model(_human_sessions)
 
 # Every onboarding form submission (data + fraud score + verdict) gets
 # appended here as one JSON line per submission -- this is the "backlog":
@@ -33,25 +28,21 @@ class SessionFeatures(BaseModel):
     typing_cadence_std_ms: float
     session_duration_sec: float
     mouse_move_count: int = 0
+    paste_detected: bool = False
 
 
 class SessionScoreResponse(BaseModel):
-    risk_score: float
     is_bot: bool
-    threshold: float
+    reasons: list[str]
 
 
 @router.post("/score", response_model=SessionScoreResponse)
 def score(features: SessionFeatures) -> SessionScoreResponse:
-    """Pure scoring endpoint -- kept as-is for testing/debugging the model
-    directly (this is what we curled earlier to verify it works). The real
-    form flow below (`/submit`) is what the frontend actually calls now."""
-    risk_score = score_session(_model, _score_min, _score_max, features.model_dump())
-    return SessionScoreResponse(
-        risk_score=risk_score,
-        is_bot=risk_score > RISK_THRESHOLD,
-        threshold=RISK_THRESHOLD,
-    )
+    """Pure scoring endpoint -- kept as-is for testing/debugging the rule
+    directly. The real form flow below (`/submit`) is what the frontend
+    actually calls now."""
+    result = score_session(features.model_dump())
+    return SessionScoreResponse(**result)
 
 
 class OnboardingFormSubmission(BaseModel):
@@ -66,6 +57,7 @@ class OnboardingFormSubmission(BaseModel):
     typing_cadence_std_ms: float
     session_duration_sec: float
     mouse_move_count: int = 0
+    paste_detected: bool = False
 
     # Defense in depth: the frontend already blocks today/future DOBs before
     # this request is ever sent, but never trust the client alone -- anyone
@@ -90,14 +82,17 @@ class SubmissionResult(BaseModel):
 
 @router.post("/submit", response_model=SubmissionResult)
 def submit_onboarding_form(submission: OnboardingFormSubmission) -> SubmissionResult:
+    print(f"[onboarding] Checking submission for bot behavior ({submission.full_name})...")
     features = {
         "typing_cadence_mean_ms": submission.typing_cadence_mean_ms,
         "typing_cadence_std_ms": submission.typing_cadence_std_ms,
         "session_duration_sec": submission.session_duration_sec,
         "mouse_move_count": submission.mouse_move_count,
+        "paste_detected": submission.paste_detected,
     }
-    risk_score = score_session(_model, _score_min, _score_max, features)
-    is_bot = risk_score > RISK_THRESHOLD
+    result = score_session(features)
+    is_bot = result["is_bot"]
+    print(f"[onboarding] Submission check {'flagged as bot-like' if is_bot else 'passed'}.")
 
     log_entry = {
         "logged_at": datetime.now(timezone.utc).isoformat(),
@@ -106,9 +101,8 @@ def submit_onboarding_form(submission: OnboardingFormSubmission) -> SubmissionRe
         "address": submission.address,
         "country": submission.country,
         **features,
-        "risk_score": risk_score,
         "is_bot": is_bot,
-        "threshold": RISK_THRESHOLD,
+        "reasons": result["reasons"],
     }
 
     with _backlog_lock:
