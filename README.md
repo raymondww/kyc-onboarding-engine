@@ -86,4 +86,4 @@ uv run python scripts/run_onboarding_demo.py
 - `opencv-python` is pinned below v5 for compatibility.
 - The liveness check is a heuristic, not a production-grade liveness model.
 - Country B ("eKYC" in `cdd_configs.json`) is implemented as ID-only verification (no webcam), by design for this demo's scope.
-- `architecture_diagram.svg`/`.png` and `kyc_pitch_deck.pptx` in the repo root are the hackathon deliverables (architecture diagram and 3-minute pitch deck).
+- `architecture_diagram.excalidraw`,`architecture_diagram.png`,`kyc_demo.mp4` and `kyc_pitch_deck.pptx` in the repo root are the hackathon deliverables (architecture diagram and 3-minute pitch deck).
