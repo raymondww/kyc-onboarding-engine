@@ -61,7 +61,7 @@ Then open `.env` and set `COURTLISTENER_API_TOKEN` to your token.
 The repo only tracks sample source faces (`data/synthetic/source_faces/`). Everything else under `data/synthetic/` is generated locally:
 
 ```
-uv run python scripts/generate_profiles.py
+uv run python src/data_generation/generate_profiles.py
 uv run python scripts/generate_synthetic_kyc_data.py
 ```
 
