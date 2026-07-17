@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>KYC Onboarding</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #171a23;
+    --border: #2a2e3a;
+    --text: #e6e8ee;
+    --muted: #8b90a0;
+    --accent: #6366f1;
+    --success: #34d399;
+    --danger: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 48px 20px;
+    margin: 0;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 32px;
+    width: 100%;
+    max-width: 440px;
+  }
+  h1 { font-size: 19px; margin: 0 0 6px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin: 0 0 28px; line-height: 1.5; }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 8px; margin-top: 18px; }
+  label:first-of-type { margin-top: 0; }
+  input, select {
+    width: 100%;
+    background: #0d0f15;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    color: var(--text);
+    font-size: 15px;
+    outline: none;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  /* Date input's calendar icon is barely visible on a dark background otherwise */
+  input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.8); }
+
+  button {
+    margin-top: 26px;
+    width: 100%;
+    padding: 12px;
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover { opacity: 0.9; }
+  button:disabled { opacity: 0.6; cursor: default; }
+
+  .confirmation {
+    margin-top: 20px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    font-size: 14px;
+    border: 1px solid var(--success);
+    color: var(--success);
+    display: none;
+  }
+  .blocked {
+    margin-top: 20px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    font-size: 14px;
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    display: none;
+  }
+  .error {
+    margin-top: 20px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    display: none;
+  }
+  .field-error {
+    font-size: 12px;
+    color: var(--danger);
+    margin-top: 6px;
+    display: none;
+  }
+  input.invalid { border-color: var(--danger); }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>KYC Onboarding</h1>
+  <p class="subtitle">Enter your details to begin identity verification.</p>
+
+  <form id="onboardingForm">
+    <label for="fullName">Full legal name</label>
+    <input type="text" id="fullName" autocomplete="off" required>
+
+    <label for="dob">Date of birth</label>
+    <input type="date" id="dob" required>
+    <div class="field-error" id="dobError">Date of birth cannot be today or in the future.</div>
+
+    <label for="address">Address</label>
+    <input type="text" id="address" autocomplete="off" required>
+
+    <label for="country">Country</label>
+    <select id="country" required>
+      <option value="" disabled selected>Select your country</option>
+      <option value="Country A">Country A</option>
+      <option value="Country B">Country B</option>
+    </select>
+
+    <button type="submit" id="submitBtn">Continue</button>
+  </form>
+
+  <div class="confirmation" id="confirmation">
+    Verified. Proceeding to document upload.
+  </div>
+  <div class="blocked" id="blocked">
+    We were unable to verify this session. Please try again or contact support.
+  </div>
+  <div class="error" id="errorBox"></div>
+</div>
+
+<script>
+  // Every field-fill signal below (typing rhythm, mouse movement, timing)
+  // is captured silently and sent to the server on submit -- nothing about
+  // it is shown in this UI. Deliberate: showing a live "you look like a
+  // bot" indicator would just teach an actual bad actor how to tune their
+  // script to avoid detection. The real verdict is logged server-side only
+  // (see backend/app/api/session_routes.py's /submit endpoint and
+  // data/session_logs.jsonl) for the team to review, not exposed here.
+  const API_URL = '/session/submit';
+
+  const form = document.getElementById('onboardingForm');
+  const fullNameInput = document.getElementById('fullName');
+  const addressInput = document.getElementById('address');
+  const countryInput = document.getElementById('country');
+  const dobInput = document.getElementById('dob');
+  const dobError = document.getElementById('dobError');
+  const submitBtn = document.getElementById('submitBtn');
+  const confirmation = document.getElementById('confirmation');
+  const blocked = document.getElementById('blocked');
+  const errorBox = document.getElementById('errorBox');
+
+  // Blocks today/future dates in the native picker itself. Belt-and-
+  // suspenders with the explicit check in validateDob() below, since `max`
+  // alone doesn't stop someone from typing a date directly into the field
+  // in browsers that allow manual segment entry.
+  function todayISODate() {
+    const now = new Date();
+    const offset = now.getTimezoneOffset();
+    const local = new Date(now.getTime() - offset * 60000);
+    return local.toISOString().split('T')[0];
+  }
+  dobInput.max = todayISODate();
+
+  function validateDob() {
+    if (!dobInput.value) return true; // let the browser's `required` handle empty
+    const isInvalid = dobInput.value >= todayISODate();
+    dobInput.classList.toggle('invalid', isInvalid);
+    dobError.style.display = isInvalid ? 'block' : 'none';
+    return !isInvalid;
+  }
+  dobInput.addEventListener('change', validateDob);
+  dobInput.addEventListener('input', validateDob);
+
+  // BUG FIX: timestamps used to go into one shared array across both
+  // fields. That meant the pause between finishing "Name" and clicking/
+  // tabbing into "Address" -- completely normal, often 1-3+ seconds -- got
+  // counted as a single keystroke "interval" alongside intervals that are
+  // normally ~100-300ms. One multi-second value wrecks the mean/std
+  // (variance is extremely sensitive to outliers), making perfectly normal
+  // typing look like a statistical outlier to the model and getting
+  // real humans flagged every time. Fix: track each field's timestamps
+  // separately, compute intervals WITHIN each field only, then combine the
+  // INTERVAL lists (not the raw timestamps) across fields -- so a field
+  // switch never becomes a fake "keystroke gap".
+  let nameKeyTimestamps = [];
+  let addressKeyTimestamps = [];
+  let pasteDetected = false;
+  let sessionStart = null;
+  let mouseMoveCount = 0;
+  let lastMouseCountTime = 0;
+
+  const IGNORED_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock',
+    'Tab', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Escape']);
+
+  function trackTyping(e, targetArray) {
+    if (IGNORED_KEYS.has(e.key)) return;
+    if (sessionStart === null) sessionStart = performance.now();
+    targetArray.push(performance.now());
+  }
+  fullNameInput.addEventListener('keydown', (e) => trackTyping(e, nameKeyTimestamps));
+  addressInput.addEventListener('keydown', (e) => trackTyping(e, addressKeyTimestamps));
+
+  let pasteEventCount = 0;
+  function trackPaste() {
+    if (sessionStart === null) sessionStart = performance.now();
+    pasteDetected = true;
+    pasteEventCount++;
+  }
+  fullNameInput.addEventListener('paste', trackPaste);
+  addressInput.addEventListener('paste', trackPaste);
+
+  // Throttled mouse move counter -- see backend notes: unthrottled counting
+  // would put real human sessions wildly outside the ~30-50/session scale
+  // the model was trained on (generate_synthetic_sessions.py's Poisson(40)).
+  document.addEventListener('mousemove', () => {
+    const now = performance.now();
+    if (now - lastMouseCountTime > 150) {
+      mouseMoveCount++;
+      lastMouseCountTime = now;
+    }
+  });
+
+  function intervalsFor(timestamps) {
+    const out = [];
+    for (let i = 1; i < timestamps.length; i++) {
+      out.push(timestamps[i] - timestamps[i - 1]);
+    }
+    return out;
+  }
+
+  function computeTypingStats() {
+    // Intervals computed WITHIN each field, then combined -- never across
+    // the name->address field switch. See the bug-fix note above.
+    const intervals = [...intervalsFor(nameKeyTimestamps), ...intervalsFor(addressKeyTimestamps)];
+    if (intervals.length === 0) return { mean: 0, std: 0 };
+    const mean = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+    const variance = intervals.reduce((a, b) => a + (b - mean) ** 2, 0) / intervals.length;
+    return { mean, std: Math.sqrt(variance) };
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorBox.style.display = 'none';
+
+    if (!validateDob()) {
+      dobInput.reportValidity ? dobInput.focus() : null;
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Submitting...';
+
+    let { mean, std } = computeTypingStats();
+    // Pure paste, no real typing at all -- honest translation of "value
+    // appeared instantly" into the feature space (see session_routes.py).
+    if (pasteDetected && nameKeyTimestamps.length === 0 && addressKeyTimestamps.length === 0) {
+      mean = 0;
+      std = 0;
+    }
+    const durationSec = sessionStart !== null ? (performance.now() - sessionStart) / 1000 : 0;
+
+    const payload = {
+      full_name: fullNameInput.value,
+      dob: dobInput.value,
+      address: addressInput.value,
+      country: countryInput.value,
+      typing_cadence_mean_ms: mean,
+      typing_cadence_std_ms: std,
+      session_duration_sec: durationSec,
+      mouse_move_count: mouseMoveCount,
+    };
+
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        // 422 here most likely means the DOB validator on the server
+        // rejected it (defense in depth beyond the client-side check above).
+        throw new Error(`Server responded ${res.status}`);
+      }
+      const result = await res.json(); // {"status": "passed" | "flagged"}
+
+      form.style.display = 'none';
+      if (result.status === 'flagged') {
+        blocked.style.display = 'block';
+      } else {
+        confirmation.style.display = 'block';
+      }
+    } catch (err) {
+      errorBox.textContent = `Could not submit: ${err.message}`;
+      errorBox.style.display = 'block';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Continue';
+    }
+  });
+</script>
+
+</body>
+</html>
