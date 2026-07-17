@@ -6,19 +6,13 @@ from rapidfuzz import fuzz
 
 ROOT = Path(__file__).resolve().parents[2]  # router.py -> onboarding_engine -> src -> repo root
 
-sys.path.insert(0, str(ROOT))                            # for `src.regulatory_engine...`
-sys.path.insert(0, str(ROOT / "scripts"))                 # for `ekyc_pipeline`
+sys.path.insert(0, str(ROOT))                            # for `src.regulatory_engine...`, `src.ekyc_pipeline...`
 sys.path.insert(0, str(ROOT / "src" / "osint_agent"))     # for run_agent's own flat imports
 
-from ekyc_pipeline import LIVENESS_REVIEW_THRESHOLD, extract_and_validate_id, face_match_and_liveness  # noqa: E402
+from src.ekyc_pipeline.pipeline import LIVENESS_REVIEW_THRESHOLD, extract_and_validate_id, face_match_and_liveness  # noqa: E402
 from src.regulatory_engine.cdd_validator import get_cdd_config    # noqa: E402
 import run_agent  # noqa: E402
 
-# rapidfuzz token_sort_ratio, not a straight string comparison: it ignores
-# word order and punctuation, so a form entry of "Saulius Staskus" still
-# matches an ID that OCR'd as "STASKUS, Saulius" (this codebase's synthetic
-# IDs use "Last, First"). Tolerant of minor OCR noise, not of a genuinely
-# different name.
 NAME_MATCH_THRESHOLD = 80
 
 
@@ -83,12 +77,12 @@ def run_onboarding_steps(
     cdd_config = get_cdd_config(country)
     verification_method = cdd_config["verification_method"]
 
-    if verification_method == "eKYC":
+    if verification_method == "Video KYC":
         if not selfie_image_path:
-            yield _step("document_check", "Selfie image required for eKYC verification.")
+            yield _step("document_check", "Selfie image required for Video KYC verification.")
             yield {
                 "event": "result", "applicant": full_name, "status": "rejected",
-                "stage": "document_check", "reasons": ["Selfie image required for eKYC verification."],
+                "stage": "document_check", "reasons": ["Selfie image required for Video KYC verification."],
             }
             return
 
@@ -135,7 +129,7 @@ def run_onboarding_steps(
         if mismatch_reasons:
             doc_decision = {"status": "rejected", "reasons": [*doc_decision["reasons"], *mismatch_reasons]}
 
-    elif verification_method == "Video KYC":
+    elif verification_method == "eKYC":
         # ID-only check for now -- see module docstring. No face_match/
         # liveness produced on this branch since no selfie is collected.
         yield _step("document_check", "Extracting information from ID...")

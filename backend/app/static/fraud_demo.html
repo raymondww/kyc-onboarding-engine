@@ -579,9 +579,9 @@
         return;
       }
 
-      // Fraud check passed -- move to document upload. Country A (eKYC)
+      // Fraud check passed -- move to document upload. Country A (Video KYC)
       // needs a selfie for face-match + liveness; Country B's ID-only
-      // check doesn't collect one at all (see src/onboarding_engine/
+      // (eKYC) check doesn't collect one at all (see src/onboarding_engine/
       // router.py's docstring for why).
       const needsSelfie = countryInput.value === 'Country A';
       selfieGroup.style.display = needsSelfie ? 'block' : 'none';
