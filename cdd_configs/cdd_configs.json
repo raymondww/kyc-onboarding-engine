@@ -1,0 +1,18 @@
+[
+  {
+    "country": "Country A",
+    "verification_method": "Video KYC",
+    "required_fields": ["full_name", "dob", "id_number", "address"],
+    "required_documents": ["government_id", "selfie"],
+    "biometric_required": true,
+    "nfc_required": true
+  },
+  {
+    "country": "Country B",
+    "verification_method": "eKYC",
+    "required_fields": ["full_name", "dob", "id_number", "address"],
+    "required_documents": ["government_id"],
+    "biometric_required": false,
+    "nfc_required": false
+  }
+]
