@@ -1,28 +1,3 @@
-"""
-Document-verification step: takes the ID image (and, for Country A, a
-selfie) uploaded after the fraud-check form passes, and routes them through
-src/onboarding_engine/router.py's run_onboarding_steps() -- full eKYC for
-Country A, ID-only check for Country B, then OSINT on a pass.
-
-This streams progress as newline-delimited JSON (NDJSON), one line per
-pipeline step as it actually happens ("Extracting information from ID...",
-"Matching selfie photo to ID photo...", "Running background check...",
-etc.), ending with a final {"event": "result", "status": ..., "reason":
-...} line -- so the frontend can show a live checklist that's genuinely in
-step with what's running server-side, not a simulated progress bar. The
-same messages print to the terminal too (see router.py's _step()), so
-you see identical progress in both places.
-
-Like the final line's shape mirrors session_routes.py's /submit response:
-deliberately thin -- status, plus a reason ONLY for the one client-fixable
-error (missing selfie on an eKYC country). Full decision detail (OCR
-fields, face-match similarity, liveness score, OSINT risk summary) is
-logged server-side only, in the kyc backlog file -- the intermediate step
-*messages* are fine to show (they're deliberately high-level, e.g. "Face
-match complete" not "similarity=0.83"), but the raw numbers stay out of
-the response.
-"""
-
 import json
 import shutil
 import sys
@@ -52,7 +27,7 @@ _backlog_lock = Lock()
 # The only rejection reason that's safe (and useful) to hand back to the
 # client directly -- it's a "you forgot to attach a file" error, not a
 # security-relevant signal about how the decision was made.
-CLIENT_VISIBLE_REASONS = {"Selfie image required for eKYC verification."}
+CLIENT_VISIBLE_REASONS = {"Selfie image required for Video KYC verification."}
 
 
 def _save_upload(upload: UploadFile, dest_dir: Path, prefix: str) -> str:

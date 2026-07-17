@@ -19,7 +19,7 @@ POST /kyc/verify (NDJSON streaming)
   ▼
 router.py: run_onboarding_steps()
   │
-  ├── Country A ("eKYC")                 ├── Country B ("Video KYC" config label)
+  ├── Country A ("Video KYC")            ├── Country B ("eKYC", ID-only)
   │   OCR ID → face match → liveness     │   OCR ID only (no webcam)
   │
   ▼
@@ -41,7 +41,7 @@ Final decision: approved / review / rejected
 
 ## Why two countries route differently
 
-`cdd_configs/cdd_configs.json` drives everything. Country A requires `biometric_required: true` (government ID + selfie, full eKYC: OCR, face match, liveness score). Country B has `biometric_required: false` (ID-only — no webcam, no face match). `src/regulatory_engine/cdd_validator.get_cdd_config(country)` is the single place that reads this config; `router.py` branches on `verification_method` ("eKYC" vs "Video KYC") to decide which checks to run. Adding a third country means adding one more entry to the JSON and one more `elif` branch — no other code changes.
+`cdd_configs/cdd_configs.json` drives everything. Country A requires `biometric_required: true` (government ID + selfie, full Video KYC: OCR, face match, liveness score). Country B has `biometric_required: false` (eKYC, ID-only — no webcam, no face match). `src/regulatory_engine/cdd_validator.get_cdd_config(country)` is the single place that reads this config; `router.py` branches on `verification_method` ("Video KYC" vs "eKYC") to decide which checks to run. Adding a third country means adding one more entry to the JSON and one more `elif` branch — no other code changes.
 
 ## Why the fraud gate runs before document upload
 
@@ -64,5 +64,5 @@ The frontend shows a live step-by-step checklist ("Extracting information from I
 ## Known scope limits (see pitch deck closing slide)
 
 - Sanctions/PEP screening covers OFAC only — no UN/EU blocklists or a distinct PEP flag yet.
-- Country B is ID-only, not a live video call — "Video KYC" is the config's label, not yet the literal feature.
+- Country A is labeled "Video KYC" but is implemented as webcam selfie capture + face-match, not a live video call with an agent — that's the literal feature this label points toward next.
 - Liveness is a heuristic proxy score, not a production-grade liveness model.

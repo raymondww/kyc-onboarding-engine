@@ -1,6 +1,6 @@
 # Hackathon Project: Adaptive KYC Engine
 
-AI-driven KYC onboarding and compliance engine — behavioral fraud detection, jurisdiction-aware identity verification (eKYC for Country A, ID-only for Country B), and an OSINT compliance agent (OFAC sanctions, adverse media, court records) built with LangGraph.
+AI-driven KYC onboarding and compliance engine — behavioral fraud detection, jurisdiction-aware identity verification (Video KYC for Country A, ID-only eKYC for Country B), and an OSINT compliance agent (OFAC sanctions, adverse media, court records) built with LangGraph.
 
 Built for the HCLTech × UBC AI/ML Hackathon, Use Case #06 (Banking/FinTech).
 
@@ -85,5 +85,5 @@ uv run python scripts/run_onboarding_demo.py
 
 - `opencv-python` is pinned below v5 for compatibility.
 - The liveness check is a heuristic, not a production-grade liveness model.
-- Country B ("Video KYC" in `cdd_configs.json`) is implemented as ID-only verification (no webcam), by design for this demo's scope.
+- Country B ("eKYC" in `cdd_configs.json`) is implemented as ID-only verification (no webcam), by design for this demo's scope.
 - `architecture_diagram.svg`/`.png` and `kyc_pitch_deck.pptx` in the repo root are the hackathon deliverables (architecture diagram and 3-minute pitch deck).

@@ -35,7 +35,7 @@ Country validated against `cdd_configs/cdd_configs.json` *before* the stream ope
 {"event": "result", "status": "approved", "reason": null}
 ```
 
-The final `result` line is intentionally thin too: `status` (`approved` | `review` | `rejected` | `not_implemented`) plus a `reason` string, populated only when the reason is safe to show the client directly (currently just "Selfie image required for eKYC verification." — a client-fixable error, not a signal about how the fraud/OSINT decision was made). The full decision detail (OCR fields, face-match similarity score, liveness score, OSINT risk summary) is written server-side only to `data/kyc_logs.jsonl`.
+The final `result` line is intentionally thin too: `status` (`approved` | `review` | `rejected` | `not_implemented`) plus a `reason` string, populated only when the reason is safe to show the client directly (currently just "Selfie image required for Video KYC verification." — a client-fixable error, not a signal about how the fraud/OSINT decision was made). The full decision detail (OCR fields, face-match similarity score, liveness score, OSINT risk summary) is written server-side only to `data/kyc_logs.jsonl`.
 
 Country A gets `document_check` → `face_match` → `identity_check` → `osint_check` → `finalize`. Country B skips `face_match` entirely (no selfie collected) and goes straight from `document_check` to `identity_check`.
 

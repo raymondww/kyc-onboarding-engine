@@ -77,12 +77,12 @@ def run_onboarding_steps(
     cdd_config = get_cdd_config(country)
     verification_method = cdd_config["verification_method"]
 
-    if verification_method == "eKYC":
+    if verification_method == "Video KYC":
         if not selfie_image_path:
-            yield _step("document_check", "Selfie image required for eKYC verification.")
+            yield _step("document_check", "Selfie image required for Video KYC verification.")
             yield {
                 "event": "result", "applicant": full_name, "status": "rejected",
-                "stage": "document_check", "reasons": ["Selfie image required for eKYC verification."],
+                "stage": "document_check", "reasons": ["Selfie image required for Video KYC verification."],
             }
             return
 
@@ -129,7 +129,7 @@ def run_onboarding_steps(
         if mismatch_reasons:
             doc_decision = {"status": "rejected", "reasons": [*doc_decision["reasons"], *mismatch_reasons]}
 
-    elif verification_method == "Video KYC":
+    elif verification_method == "eKYC":
         # ID-only check for now -- see module docstring. No face_match/
         # liveness produced on this branch since no selfie is collected.
         yield _step("document_check", "Extracting information from ID...")
