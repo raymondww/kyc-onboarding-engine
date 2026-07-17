@@ -34,9 +34,13 @@ def extract_and_validate_id(image_path: str) -> dict:
     dob = dates[0] if len(dates) >= 1 else None
     expiry = dates[-1] if len(dates) >= 2 else None
 
-    # ID numbers are "ID" + 9 digits 
-    id_match = re.search(r"\bID\d{9}\b", raw_text)
-    id_number = id_match.group(0) if id_match else None
+    # ID numbers are "ID" + 9 digits. Tesseract reliably misreads the "I" in
+    # "ID" as digit "1" (a bare vertical stroke in most sans fonts, ours
+    # included, is genuinely ambiguous between the two) -- confirmed by
+    # generating a card and OCR'ing it directly: "ID750017012" on the card
+    # comes back as "1D750017012" in raw_text. Accept either.
+    id_match = re.search(r"\b[I1]D\d{9}\b", raw_text)
+    id_number = id_match.group(0).replace("1D", "ID", 1) if id_match else None
     if id_number is None:
         fallback = re.search(r"\b\d{9,11}\b", raw_text)
         id_number = fallback.group(0) if fallback else None
