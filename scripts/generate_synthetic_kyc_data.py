@@ -55,8 +55,11 @@ def pick_demo_profiles() -> list[dict]:
             label = f"{'sanctioned' if is_sanctioned else 'normal'} + {country}"
             pick_from(pool, label)
 
-    # One wildcard, from whatever's left, for variety beyond the 4 fixed slots.
-    pick_from(profiles, "random wildcard")
+    wildcard_pool = [
+        p for p in profiles
+        if p["country"] == "Country A" and not p["is_sanctioned"] and p["id_number"] not in chosen_ids
+    ]
+    pick_from(wildcard_pool, "wildcard (Country A, non-sanctioned, guaranteed pass)")
 
     return chosen
 
@@ -118,9 +121,28 @@ def main():
     demo_profiles = pick_demo_profiles()
     rng = random.Random(SEED)
 
+    # If you've dropped your own photo into source_faces/, pin it to the
+    # wildcard slot (always the last entry in demo_profiles -- see
+    # pick_demo_profiles(), which now forces that slot to Country A +
+    # non-sanctioned) instead of letting it land on whatever slot
+    # alphabetical file ordering happens to cycle it to. Detected as
+    # "anything not named like the generic placeholder faces" -- adjust
+    # this filter if your placeholder photos use a different naming scheme.
+    personal_photos = [f for f in faces if not f.stem.lower().startswith("random-person")]
+    personal_photo = personal_photos[0] if personal_photos else None
+    other_faces = [f for f in faces if f != personal_photo] if personal_photo else faces
+    if personal_photo:
+        print(f"Pinning {personal_photo.name} to the wildcard (Country A, guaranteed-pass) identity.")
+
     identities = []
     for i, profile in enumerate(demo_profiles):
-        face_path = faces[i % len(faces)]  # cycle if fewer faces than identities
+        is_wildcard_slot = i == len(demo_profiles) - 1
+        if is_wildcard_slot and personal_photo is not None:
+            face_path = personal_photo
+        elif other_faces:
+            face_path = other_faces[i % len(other_faces)]  # cycle if fewer faces than identities
+        else:
+            face_path = faces[i % len(faces)]  # only personal photo available -- reuse it everywhere
         identities.append({
             "identity_id": f"synth_{i:03d}",
             "full_name": profile["full_name"],

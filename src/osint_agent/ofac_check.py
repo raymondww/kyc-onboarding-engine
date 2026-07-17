@@ -1,11 +1,18 @@
+from pathlib import Path
+
 from rapidfuzz import fuzz, process
 import pandas as pd
 import re
 
+
+ROOT = Path(__file__).resolve().parents[2]  # ofac_check.py -> osint_agent -> src -> repo root
+SDN_CSV_PATH = ROOT / "data" / "raw" / "sdn.csv"
+
+
 def load_sdn_list():
     """Load the real OFAC SDN list (individuals only), including DOB extracted from 'reason'."""
     sdn_df = pd.read_csv(
-        "data/raw/sdn.csv",
+        SDN_CSV_PATH,
         header=None,
         names=["uid", "name", "entity", "region", "role", "vessel_id",
                "vessel_type", "vessel_length", "vessel_width", "country", "null", "reason"]
@@ -79,7 +86,7 @@ if __name__ == "__main__":
 
     sdn_df = load_sdn_list()
 
-    with open("data/synthetic/synthetic_profiles.json", "r") as f:
+    with open(ROOT / "data" / "synthetic" / "synthetic_profiles.json", "r") as f:
         profiles_df = pd.read_json(f)
 
     for profile in profiles_df.to_dict(orient="records"):

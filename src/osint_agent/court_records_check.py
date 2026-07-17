@@ -8,12 +8,28 @@ load_dotenv()  # Load environment variables from .env file
 
 COURTLISTENER_API_URL = "https://www.courtlistener.com/api/rest/v4/search/"
 COURTLISTENER_OPINION_URL = "https://www.courtlistener.com/api/rest/v4/opinions/{}/"
-COURTLISTENER_TOKEN = os.environ.get("COURTLISTENER_API_TOKEN")  
+COURTLISTENER_TOKEN = os.environ.get("COURTLISTENER_API_TOKEN")
+
+
+REQUEST_TIMEOUT_SEC = 20
+MAX_RETRIES_ON_TIMEOUT = 1
 FINANCIAL_RISK_KEYWORDS = [
     "fraud", "money laundering", "embezzlement", "securities",
     "ponzi", "wire fraud", "bank fraud", "racketeering", "rico",
     "sanctions", "bribery", "corruption", "tax evasion", "forgery"
 ]
+
+def _get_with_retry(url, headers, params=None):
+    """requests.get with one retry, but only on a timeout -- a 4xx/5xx or a
+    connection error won't be fixed by trying again immediately."""
+    for attempt in range(MAX_RETRIES_ON_TIMEOUT + 1):
+        try:
+            return requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT_SEC)
+        except requests.exceptions.Timeout:
+            if attempt == MAX_RETRIES_ON_TIMEOUT:
+                raise
+            continue
+
 
 def search_court_records(applicant_name, max_results=5):
     """
@@ -32,7 +48,7 @@ def search_court_records(applicant_name, max_results=5):
     }
 
     try:
-        response = requests.get(COURTLISTENER_API_URL, headers=headers, params=params, timeout=10)
+        response = _get_with_retry(COURTLISTENER_API_URL, headers, params)
         response.raise_for_status()
         data = response.json()
     except requests.exceptions.RequestException as e:
@@ -67,7 +83,7 @@ def fetch_opinion_text(opinion_id, rate_limit_delay=1.0):
     url = COURTLISTENER_OPINION_URL.format(opinion_id)
 
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = _get_with_retry(url, headers)
         response.raise_for_status()
         data = response.json()
     except requests.exceptions.RequestException as e:
