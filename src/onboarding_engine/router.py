@@ -50,13 +50,22 @@ def _verify_form_matches_id(full_name: str, dob: str, ocr_fields: dict) -> list[
     return reasons
 
 
-def _step(step_id: str, message: str) -> dict:
+def _step(step_id: str, message: str, ok: bool | None = None) -> dict:
     """One progress update -- printed to the terminal immediately (so you
     see it live in the uvicorn console) and also returned as an event dict
     so callers can stream the same message to a frontend. Kept to one place
-    so the terminal and the UI never say different things."""
+    so the terminal and the UI never say different things.
+
+    `ok` is the pass/fail signal for this step, separate from `message`'s
+    human-readable text: True = passed (frontend shows a green check),
+    False = failed (red cross), None = still in progress / no verdict yet
+    -- the default, for steps like "Extracting information from ID..."
+    that get a real verdict later from their own "_done" event. A soft
+    "needs review" verdict (not pass, not fail) is passed explicitly as
+    the string "warn" rather than reusing None, so it can't be confused
+    with "no verdict yet"."""
     print(f"[onboarding] {message}")
-    return {"event": "step", "step": step_id, "message": message}
+    return {"event": "step", "step": step_id, "message": message, "ok": ok}
 
 
 def run_onboarding_steps(
@@ -79,7 +88,7 @@ def run_onboarding_steps(
 
     if verification_method == "Video KYC":
         if not selfie_image_path:
-            yield _step("document_check", "Selfie image required for Video KYC verification.")
+            yield _step("document_check", "Selfie image required for Video KYC verification.", ok=False)
             yield {
                 "event": "result", "applicant": full_name, "status": "rejected",
                 "stage": "document_check", "reasons": ["Selfie image required for Video KYC verification."],
@@ -91,6 +100,7 @@ def run_onboarding_steps(
         yield _step(
             "document_check_done",
             "ID extraction complete." if ocr["is_valid"] else f"ID extraction found issues: {ocr['errors']}",
+            ok=ocr["is_valid"],
         )
 
         yield _step("face_match", "Matching selfie photo to ID photo...")
@@ -98,6 +108,7 @@ def run_onboarding_steps(
         yield _step(
             "face_match_done",
             "Face match complete." if face["face_match"]["is_match"] else "Face match failed.",
+            ok=face["face_match"]["is_match"],
         )
         face_match = face["face_match"]
         liveness = face["liveness"]
@@ -125,6 +136,7 @@ def run_onboarding_steps(
         yield _step(
             "identity_check_done",
             "Identity match confirmed." if not mismatch_reasons else f"Identity mismatch: {mismatch_reasons}",
+            ok=not mismatch_reasons,
         )
         if mismatch_reasons:
             doc_decision = {"status": "rejected", "reasons": [*doc_decision["reasons"], *mismatch_reasons]}
@@ -137,6 +149,7 @@ def run_onboarding_steps(
         yield _step(
             "document_check_done",
             "ID extraction complete." if ocr["is_valid"] else f"ID extraction found issues: {ocr['errors']}",
+            ok=ocr["is_valid"],
         )
 
         yield _step("identity_check", "Verifying form details match ID...")
@@ -144,6 +157,7 @@ def run_onboarding_steps(
         yield _step(
             "identity_check_done",
             "Identity match confirmed." if not mismatch_reasons else f"Identity mismatch: {mismatch_reasons}",
+            ok=not mismatch_reasons,
         )
         doc_decision = {
             "status": "approved" if (ocr["is_valid"] and not mismatch_reasons) else "rejected",
@@ -171,7 +185,10 @@ def run_onboarding_steps(
     # LLM call, so this is slow (~seconds) and needs Ollama running locally.
     yield _step("osint_check", "Running background check (sanctions + adverse media)...")
     osint_result = run_agent.run_osint_agent(full_name, applicant_dob=dob)
-    yield _step("osint_check_done", f"Background check complete ({osint_result['risk_flag']} risk).")
+    # LOW = pass, MEDIUM = soft/needs-review, HIGH = fail -- same three-way
+    # verdict the final status logic below applies, just one step earlier.
+    osint_ok = {"LOW": True, "MEDIUM": "warn", "HIGH": False}.get(osint_result["risk_flag"], True)
+    yield _step("osint_check_done", f"Background check complete ({osint_result['risk_flag']} risk).", ok=osint_ok)
 
     final_status = "approved"
     if doc_decision["status"] == "review":
@@ -181,9 +198,11 @@ def run_onboarding_steps(
     if osint_result["risk_flag"] == "HIGH":
         final_status = "rejected"
 
+    final_ok = {"approved": True, "review": "warn", "rejected": False}[final_status]
     yield _step(
         "finalize",
         "Submitted successfully." if final_status == "approved" else f"Verification {final_status}.",
+        ok=final_ok,
     )
     yield {
         "event": "result",
