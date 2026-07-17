@@ -13,11 +13,6 @@ from src.ekyc_pipeline.pipeline import LIVENESS_REVIEW_THRESHOLD, extract_and_va
 from src.regulatory_engine.cdd_validator import get_cdd_config    # noqa: E402
 import run_agent  # noqa: E402
 
-# rapidfuzz token_sort_ratio, not a straight string comparison: it ignores
-# word order and punctuation, so a form entry of "Saulius Staskus" still
-# matches an ID that OCR'd as "STASKUS, Saulius" (this codebase's synthetic
-# IDs use "Last, First"). Tolerant of minor OCR noise, not of a genuinely
-# different name.
 NAME_MATCH_THRESHOLD = 80
 
 

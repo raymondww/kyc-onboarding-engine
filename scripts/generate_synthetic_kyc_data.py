@@ -20,12 +20,17 @@ MANIFEST_OUT = ROOT / "data" / "synthetic" / "manifest.json"
 CARD_SIZE = (856, 540)  # ~ID-1 card ratio, upscaled for readable OCR
 PHOTO_BOX = (40, 120, 300, 460)  # left, top, right, bottom
 
+FONT_PATH = ROOT / "assets" / "fonts" / "DejaVuSans-Bold.ttf"
+
 
 def _font(size: int) -> ImageFont.FreeTypeFont:
     try:
-        return ImageFont.truetype("arial.ttf", size)
+        return ImageFont.truetype(str(FONT_PATH), size)
     except OSError:
-        return ImageFont.load_default()
+        try:
+            return ImageFont.load_default(size=size)
+        except TypeError:
+            return ImageFont.load_default()  # very old Pillow -- ignores size
 
 
 def pick_demo_profiles() -> list[dict]:
@@ -69,7 +74,9 @@ def make_id_card(identity: dict, face_path: Path, out_path: Path) -> None:
     draw = ImageDraw.Draw(card)
 
     draw.rectangle([(0, 0), (CARD_SIZE[0], 70)], fill=(20, 45, 90))
-    draw.text((30, 18), "SYNTHETIC NATIONAL ID -- DEMO ONLY", font=_font(28), fill="white")
+    # 34 is the biggest size this exact title fits at in DejaVuSans-Bold
+    # without running off the 856px-wide card
+    draw.text((30, 14), "SYNTHETIC NATIONAL ID -- DEMO ONLY", font=_font(28), fill="white")
 
     face = Image.open(face_path).convert("RGB")
     box_w, box_h = PHOTO_BOX[2] - PHOTO_BOX[0], PHOTO_BOX[3] - PHOTO_BOX[1]
@@ -89,9 +96,9 @@ def make_id_card(identity: dict, face_path: Path, out_path: Path) -> None:
     ]
     y = 130
     for label, value in fields:
-        draw.text((330, y), f"{label}:", font=_font(22), fill=(60, 60, 60))
-        draw.text((330, y + 28), value, font=_font(26), fill=(10, 10, 10))
-        y += 70
+        draw.text((330, y), f"{label}:", font=_font(24), fill=(60, 60, 60))
+        draw.text((330, y + 30), value, font=_font(26), fill=(10, 10, 10))
+        y += 78
 
     card.save(out_path)
 
