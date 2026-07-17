@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from rapidfuzz import fuzz, process
+from rapidfuzz import fuzz, process, utils
 import pandas as pd
 import re
 
@@ -43,7 +43,7 @@ def check_ofac_match(applicant_profile, sdn_df, threshold=90):
     applicant_dob = applicant_profile.get("dob")
 
     match_result = process.extractOne(
-        name, sdn_df["name"], scorer=fuzz.token_sort_ratio
+        name, sdn_df["name"], scorer=fuzz.token_sort_ratio, processor=utils.default_process
     )
 
     if match_result is None:
