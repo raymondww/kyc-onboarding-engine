@@ -23,7 +23,7 @@ PHOTO_BOX = (40, 120, 300, 460)  # left, top, right, bottom
 
 def _font(size: int) -> ImageFont.FreeTypeFont:
     try:
-        return ImageFont.truetype("DejaVuSans-Bold.ttf", size)
+        return ImageFont.truetype("arial.ttf", size)
     except OSError:
         return ImageFont.load_default()
 

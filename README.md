@@ -70,8 +70,7 @@ The second script pins any non-"random-person" photo in `data/synthetic/source_f
 ## Run the app
 
 ```
-cd backend
-uv run uvicorn app.main:app --reload
+uv run uvicorn app.main:app --reload --app-dir backend
 ```
 
 Then open http://localhost:8000 to use the onboarding demo (fraud check → document upload → live pipeline progress).
