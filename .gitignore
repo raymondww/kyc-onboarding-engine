@@ -219,3 +219,19 @@ __marimo__/
 
 # Auto-generated files
 .DS_Store
+
+# Synthetic KYC demo data -- everything here is generated on demand by
+# src/data_generation/generate_profiles.py and
+# scripts/generate_synthetic_kyc_data.py / generate_synthetic_sessions.py.
+# Only the sample face photos are worth checking in; a fresh clone
+# regenerates synthetic_profiles.json, manifest.json, ids/, selfies/, and
+# sessions.json by just running those scripts.
+data/synthetic/*
+!data/synthetic/source_faces/
+
+# Runtime backlogs (session_routes.py / kyc_routes.py) and uploaded
+# document/selfie images from live form submissions -- generated at
+# runtime, not source data.
+data/session_logs.jsonl
+data/kyc_logs.jsonl
+data/uploads/
