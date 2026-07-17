@@ -10,7 +10,7 @@
   {
     "country": "Country B",
     "verification_method": "Video KYC",
-    "required_fields": ["full_name", "dob", "id_number"],
+    "required_fields": ["full_name", "dob", "id_number", "address"],
     "required_documents": ["government_id"],
     "biometric_required": false,
     "nfc_required": false
